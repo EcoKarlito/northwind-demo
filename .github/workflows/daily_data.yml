@@ -1,0 +1,63 @@
+name: Daily Data Pipeline
+
+on:
+  schedule:
+    # Runs daily at 6:00 AM UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode: 'daily' for incremental data, 'init' for full rebuild"
+        required: false
+        default: "daily"
+        type: choice
+        options:
+          - daily
+          - init
+
+jobs:
+  generate-and-load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine run mode
+        id: mode
+        run: |
+          # Use workflow_dispatch input if available, otherwise default to "daily"
+          MODE="${{ github.event.inputs.mode || 'daily' }}"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Running in $MODE mode"
+
+      - name: Generate data
+        run: |
+          echo "=== Generating data (mode: ${{ steps.mode.outputs.mode }}) ==="
+          python generate_data.py --mode "${{ steps.mode.outputs.mode }}"
+
+      - name: Load data into PostgreSQL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "=== Loading data (mode: ${{ steps.mode.outputs.mode }}) ==="
+          python load_data.py --mode "${{ steps.mode.outputs.mode }}"
+
+      - name: Summary
+        run: |
+          echo "=== Pipeline complete ==="
+          echo "Mode: ${{ steps.mode.outputs.mode }}"
+          echo "Date: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          if [ -d data ]; then
+            echo "CSV files generated:"
+            ls -lh data/*.csv 2>/dev/null || echo "  (no CSV files)"
+          fi
