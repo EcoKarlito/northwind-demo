@@ -38,19 +38,30 @@ jobs:
           # Use workflow_dispatch input if available, otherwise default to "daily"
           MODE="${{ github.event.inputs.mode || 'daily' }}"
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+          # Map workflow mode to generator mode
+          # generate_data.py uses "full" for initial load, "daily" for incremental
+          # load_data.py uses "init" for initial load, "daily" for incremental
+          if [ "$MODE" = "init" ]; then
+            echo "gen_mode=full" >> "$GITHUB_OUTPUT"
+            echo "load_mode=init" >> "$GITHUB_OUTPUT"
+          else
+            echo "gen_mode=daily" >> "$GITHUB_OUTPUT"
+            echo "load_mode=daily" >> "$GITHUB_OUTPUT"
+          fi
           echo "Running in $MODE mode"
 
       - name: Generate data
         run: |
-          echo "=== Generating data (mode: ${{ steps.mode.outputs.mode }}) ==="
-          python generate_data.py --mode "${{ steps.mode.outputs.mode }}"
+          echo "=== Generating data (mode: ${{ steps.mode.outputs.gen_mode }}) ==="
+          python generate_data.py --mode "${{ steps.mode.outputs.gen_mode }}"
 
       - name: Load data into PostgreSQL
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          echo "=== Loading data (mode: ${{ steps.mode.outputs.mode }}) ==="
-          python load_data.py --mode "${{ steps.mode.outputs.mode }}"
+          echo "=== Loading data (mode: ${{ steps.mode.outputs.load_mode }}) ==="
+          python load_data.py --mode "${{ steps.mode.outputs.load_mode }}"
 
       - name: Summary
         run: |
